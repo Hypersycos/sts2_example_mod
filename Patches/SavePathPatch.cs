@@ -1,8 +1,10 @@
 ﻿using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -74,6 +76,15 @@ public class SubmenuPatch
         mpAbandonScreen = null;
     }
 
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(NSubmenuStack), nameof(NSubmenuStack.Pop))]
+    static void RefreshSavesOnPop()
+    {
+        Store.mainMenu?.RefreshButtons();
+        if (Store.submenu is not null)
+            Store.submenu.GetType().GetMethod("UpdateButtons", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(Store.submenu, new object?[] { });
+    }
+
     [HarmonyPrefix]
     [HarmonyPatch(typeof(NMainMenuSubmenuStack), nameof(NMainMenuSubmenuStack.GetSubmenuType), new Type[] {typeof(Type)})]
     static bool GetAddedSubmenus(Type type, NMainMenuSubmenuStack __instance, ref NSubmenu __result)
@@ -135,8 +146,9 @@ public class MultiplayerMenuPatch
 {
     [HarmonyPostfix]
     [HarmonyPatch("UpdateButtons")]
-    static void ReEnableButton(NSubmenuButton ____hostButton)
+    static void ReEnableButton(NSubmenuButton ____hostButton, NMultiplayerSubmenu __instance)
     {
+        Store.submenu = __instance;
         if (SaveManager.Instance.HasMultiplayerRunSave)
         {
             ____hostButton.Visible = true;
@@ -182,7 +194,6 @@ public class MenuPatch
     static void GrabMenu(bool openTimeline, ref NMainMenu __result)
     {
         Store.mainMenu = __result;
-        Log.Info("Grabbed mainmenu!");
     }
 
     [HarmonyPostfix]
@@ -227,7 +238,6 @@ public class ContinueButtonPatch
     [HarmonyPatch("OnFocus")]
     static bool AllowContinuePopup()
     {
-        Log.Info("Sp saves: "+Store.saveCount.ToString());
         return Store.saveCount == 1;
     }
 }
@@ -235,23 +245,13 @@ public class ContinueButtonPatch
 [HarmonyPatch(typeof(RunManager))]
 public class RunManagerPatch
 {
-
     [HarmonyPrefix]
     [HarmonyPatch(nameof(RunManager.ToSave))]
     public static void ChangeSaveName(RunManager __instance, long ____startTime)
     {
         DateTime startTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
         startTime = startTime.AddSeconds(____startTime).ToLocalTime();
-
-        Log.Info(__instance.ToString()!);
-        Log.Info(typeof(RunManager).GetProperty("State", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.ToString()!);
         RunState? state = typeof(RunManager).GetProperty("State", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(__instance) as RunState;
-
-        Log.Info(state!.ToString()!);
-
-        Log.Info(__instance.NetService.ToString()!);
-
-        Log.Info(__instance.NetService.Type.ToString()!);
 
         if (__instance.NetService.Type == NetGameType.Singleplayer)
         {
@@ -262,10 +262,6 @@ public class RunManagerPatch
             Store.currentMPSave = startTime.ToString("MMM dd HH-mm");
             foreach (Player player in state!.Players)
             {
-                Log.Info(player.ToString()!);
-                Log.Info(player.NetId.ToString()!);
-                Log.Info(player.Character.ToString()!);
-                Log.Info(player.Character.Title.ToString()!);
                 Store.currentMPSave += " " + PlatformUtil.GetPlayerName(__instance.NetService.Platform, player.NetId) + " " + player.Character.Title.GetFormattedText();
             }
         }
@@ -279,8 +275,10 @@ public class RunSaveManagerPatch
     [HarmonyPatch("CurrentRunSavePath", MethodType.Getter)]
     static bool SingleplayerPath(ref string __result, IProfileIdProvider ____profileIdProvider)
     {
+        if (Store.currentSPSave == "current_run")
+            return true;
+
         __result = Path.Combine(Store.SaveDir, Store.currentSPSave + ".spsave");
-        Log.Info(__result);
         return false;
     }
 
@@ -288,22 +286,52 @@ public class RunSaveManagerPatch
     [HarmonyPatch("CurrentMultiplayerRunSavePath", MethodType.Getter)]
     static bool MultiplayerPath(ref string __result, IProfileIdProvider ____profileIdProvider)
     {
+        if (Store.currentMPSave == "current_run_mp")
+            return true;
+
         __result = Path.Combine(Store.SaveDir, Store.currentMPSave + ".mpsave");
-        Log.Info(__result);
         return false;
     }
 
     [HarmonyPrefix]
-    [HarmonyPatch(nameof(SaveManager.HasRunSave), MethodType.Getter)]
-    static bool HasSingleplayerRun(ref bool __result, ISaveStore ____saveStore, IProfileIdProvider ____profileIdProvider)
+    [HarmonyPatch(nameof(RunSaveManager.HasRunSave), MethodType.Getter)]
+    static bool HasSingleplayerRun(ref bool __result, ISaveStore ____saveStore, IProfileIdProvider ____profileIdProvider, RunSaveManager __instance)
     {
         Store.lastSaveStore = ____saveStore;
         if (!____saveStore.DirectoryExists(Store.SaveDir))
             ____saveStore.CreateDirectory(Store.SaveDir);
 
+        string oldPath = RunSaveManager.GetRunSavePath(____profileIdProvider.CurrentProfileId, "current_run.save");
+
         IEnumerable<string> files = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => name.Length > 6 && name.Substring(name.Length - 6) == "spsave");
+
+        if (____saveStore.FileExists(oldPath))
+        {
+            Store.currentSPSave = "current_run";
+            ReadSaveResult<SerializableRun> vanilla = __instance.LoadRunSave();
+
+            if (vanilla.Success)
+            {
+                DateTime startTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+                startTime = startTime.AddSeconds(vanilla.SaveData!.StartTime).ToLocalTime();
+
+                string character = new LocString("characters", vanilla.SaveData!.Players[0].CharacterId!.Entry + ".title").GetFormattedText();
+
+                Store.currentSPSave = startTime.ToString("MMM dd HH-mm") + " " + character;
+                string copyPath = Path.Combine(Store.SaveDir, Store.currentSPSave + ".spsave");
+
+                if (!____saveStore.FileExists(copyPath) || ____saveStore.GetLastModifiedTime(copyPath) < ____saveStore.GetLastModifiedTime(oldPath))
+                {
+                    ____saveStore.WriteFile(copyPath, ____saveStore.ReadFile(oldPath)!);
+                    files = files.AddItem(Store.currentSPSave + ".spsave");
+                }
+            }
+        }
+
+        Log.Info("files: " + files.ToString()!);
         Store.spSaves = files;
         Store.saveCount = files.Count();
+        Log.Info("count: " + Store.saveCount.ToString());
         __result = Store.saveCount > 0;
 
         if (__result)
@@ -315,17 +343,49 @@ public class RunSaveManagerPatch
         {
             Store.currentSPSave = "";
         }
-
-        Log.Info("Has Singleplayer run: " + __result.ToString());
         return false;
     }
 
     [HarmonyPrefix]
-    [HarmonyPatch(nameof(SaveManager.HasMultiplayerRunSave), MethodType.Getter)]
-    static bool HasMultiplayerRun(ref bool __result, ISaveStore ____saveStore, IProfileIdProvider ____profileIdProvider)
+    [HarmonyPatch(nameof(RunSaveManager.HasMultiplayerRunSave), MethodType.Getter)]
+    static bool HasMultiplayerRun(ref bool __result, ISaveStore ____saveStore, IProfileIdProvider ____profileIdProvider, RunSaveManager __instance)
     {
         Store.lastSaveStore = ____saveStore;
+        if (!____saveStore.DirectoryExists(Store.SaveDir))
+            ____saveStore.CreateDirectory(Store.SaveDir);
+
+        string oldPath = RunSaveManager.GetRunSavePath(____profileIdProvider.CurrentProfileId, "current_run_mp.save");
+
         IEnumerable<string> files = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => name.Length > 6 && name.Substring(name.Length - 6) == "mpsave");
+
+        if (____saveStore.FileExists(oldPath))
+        {
+            Store.currentMPSave = "current_run_mp";
+            ReadSaveResult<SerializableRun> vanilla = __instance.LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform));
+
+            if (vanilla.Success)
+            {
+                DateTime startTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+                startTime = startTime.AddSeconds(vanilla.SaveData!.StartTime).ToLocalTime();
+
+                Store.currentMPSave = startTime.ToString("MMM dd HH-mm");
+
+                foreach (SerializablePlayer player in vanilla.SaveData!.Players)
+                {
+                    string character = new LocString("characters", player.CharacterId!.Entry + ".title").GetFormattedText();
+                    Store.currentMPSave += " " + PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, player.NetId) + " " + character;
+                }
+
+                string copyPath = Path.Combine(Store.SaveDir, Store.currentMPSave + ".mpsave");
+
+                if (!____saveStore.FileExists(copyPath) || ____saveStore.GetLastModifiedTime(copyPath) < ____saveStore.GetLastModifiedTime(oldPath))
+                {
+                    ____saveStore.WriteFile(copyPath, ____saveStore.ReadFile(oldPath)!);
+                    files = files.AddItem(Store.currentMPSave + ".mpsave");
+                }
+            }
+        }
+
         Store.mpSaves = files;
         Store.multiSaveCount = files.Count();
         __result = Store.multiSaveCount > 0;
@@ -339,8 +399,6 @@ public class RunSaveManagerPatch
         {
             Store.currentMPSave = "";
         }
-
-        Log.Info("Has Multiplayer run: " + __result.ToString());
         return false;
     }
 }
