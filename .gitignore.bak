@@ -1,6 +1,5 @@
 # User-specific build configuration
 local.props
-pictures/
 
 
 *.import
