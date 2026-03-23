@@ -85,32 +85,16 @@ namespace MoreSaves.MainMenu
 
         public void ContinueSP(NButton _)
         {
-            if (readResult == null || !readResult.Success)
-            {
-                NErrorPopup modalToCreate = NErrorPopup.Create(new LocString("main_menu_ui", "INVALID_SAVE_POPUP.title"), new LocString("main_menu_ui", "INVALID_SAVE_POPUP.description_run"), new LocString("main_menu_ui", "INVALID_SAVE_POPUP.dismiss"), showReportBugButton: true)!;
-                NModalContainer.Instance?.Add(modalToCreate);
-                NModalContainer.Instance?.ShowBackstop();
-                return;
-            }
             Store.currentSPSave = myName;
-            TaskHelper.RunSafely(ContinueSPAsync());
+            Store.mainMenu!.RefreshButtons();
+            
+            ContinueSP(Store.mainMenu, _);
         }
 
-        protected async Task ContinueSPAsync()
+        [HarmonyReversePatch]
+        [HarmonyPatch(typeof(NMainMenu), "OnContinueButtonPressed")]
+        protected static void ContinueSP(object instance, NButton _)
         {
-            NAudioManager.Instance?.StopMusic();
-            SerializableRun serializableRun = readResult!.SaveData!;
-            RunState runState = RunState.FromSerializable(serializableRun);
-
-            RunManager.Instance.SetUpSavedSinglePlayer(runState, serializableRun);
-            Log.Info($"Continuing run with character: {serializableRun.Players[0].CharacterId}");
-
-            SfxCmd.Play(runState.Players[0].Character.CharacterTransitionSfx);
-            await NGame.Instance!.Transition.FadeOut(0.8f, runState.Players[0].Character.CharacterSelectTransitionPath);
-
-            NGame.Instance.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());
-            await NGame.Instance.LoadRun(runState, serializableRun.PreFinishedRoom);
-            await NGame.Instance.Transition.FadeIn();
         }
 
         public void ContinueMP(NButton _)
@@ -137,6 +121,7 @@ namespace MoreSaves.MainMenu
         public void AbandonSP(NButton _)
         {
             Store.currentSPSave = myName;
+            Store.mainMenu!.RefreshButtons();
             NModalContainer.Instance?.Add(NAbandonRunConfirmPopup.Create(Store.mainMenu)!);
         }
 
