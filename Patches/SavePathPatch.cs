@@ -384,7 +384,16 @@ public class RunSaveManagerPatch
 
         string oldPath = RunSaveManager.GetRunSavePath(____profileIdProvider.CurrentProfileId, "current_run.save");
 
-        IEnumerable<string> files = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => name.Length > 6 && name.Substring(name.Length - 6) == "spsave");
+        HashSet<string> files = new HashSet<string>();
+        IEnumerable<string> fullFiles = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => (name.Length > 6 && name.Substring(name.Length - 6) == "spsave") ||
+                                                                                                (name.Length > 13 && name.Substring(name.Length - 13) == "spsave.backup"));
+        foreach (string file in fullFiles)
+        {
+            if (file[file.Length - 6] == 's')
+                files.Add(file.Substring(0, file.Length - 7));
+            else
+                files.Add(file.Substring(0, file.Length - 14));
+        }
 
         if (Store.currentSPSave == "" && ____saveStore.FileExists(oldPath))
         {
@@ -398,34 +407,20 @@ public class RunSaveManagerPatch
 
                 string character = new LocString("characters", vanilla.SaveData!.Players[0].CharacterId!.Entry + ".title").GetFormattedText();
 
-                string copyPath = startTime.ToString("MMM dd HH-mm") + " " + character;
-                copyPath = Path.Combine(Store.SaveDir, copyPath + ".spsave");
+                string newName = startTime.ToString("MMM dd HH-mm") + " " + character;
+                string copyPath = Path.Combine(Store.SaveDir, newName + ".spsave");
 
                 Log.Info("Moving from "+oldPath+" to "+copyPath);
                 ____saveStore.RenameFile(oldPath, copyPath);
-                files = files.AddItem(Store.currentSPSave + ".spsave");
+                files.Add(newName);
 
-                /*if (!____saveStore.FileExists(copyPath) || ____saveStore.GetLastModifiedTime(copyPath) < ____saveStore.GetLastModifiedTime(oldPath))
-                {
-                    ____saveStore.WriteFile(copyPath, ____saveStore.ReadFile(oldPath)!);
-                    
-                }*/
+                Store.currentSPSave = "";
             }
         }
 
         Store.spSaves = files;
         Store.saveCount = files.Count();
         __result = Store.saveCount > 0;
-
-/*        if (__result)
-        {
-            Store.currentSPSave = files.Last();
-            Store.currentSPSave = Store.currentSPSave.Substring(0, Store.currentSPSave.Length - 7);
-        }
-        else
-        {
-            Store.currentSPSave = "";
-        }*/
         return false;
     }
 
@@ -439,7 +434,16 @@ public class RunSaveManagerPatch
 
         string oldPath = RunSaveManager.GetRunSavePath(____profileIdProvider.CurrentProfileId, "current_run_mp.save");
 
-        IEnumerable<string> files = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => name.Length > 6 && name.Substring(name.Length - 6) == "mpsave");
+        HashSet<string> files = new HashSet<string>();
+        IEnumerable<string> fullFiles = ____saveStore.GetFilesInDirectory(Store.SaveDir).Where((name) => (name.Length > 6 && name.Substring(name.Length - 6) == "mpsave") ||
+                                                                                                (name.Length > 13 && name.Substring(name.Length - 13) == "mpsave.backup"));
+        foreach(string file in fullFiles)
+        {
+            if (file[file.Length - 6] == 'm')
+                files.Add(file.Substring(0,file.Length-7));
+            else
+                files.Add(file.Substring(0,file.Length-14));
+        }
 
         if (Store.currentMPSave == "" && ____saveStore.FileExists(oldPath))
         {
@@ -451,41 +455,26 @@ public class RunSaveManagerPatch
                 DateTime startTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
                 startTime = startTime.AddSeconds(vanilla.SaveData!.StartTime).ToLocalTime();
 
-                string copyPath = startTime.ToString("MMM dd HH-mm");
+                string newName = startTime.ToString("MMM dd HH-mm");
 
                 foreach (SerializablePlayer player in vanilla.SaveData!.Players)
                 {
                     string character = new LocString("characters", player.CharacterId!.Entry + ".title").GetFormattedText();
-                    copyPath += " " + PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, player.NetId) + " " + character;
+                    newName += " " + PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, player.NetId) + " " + character;
                 }
 
-                copyPath = Path.Combine(Store.SaveDir, copyPath + ".mpsave");
+                string copyPath = Path.Combine(Store.SaveDir, newName + ".mpsave");
 
                 Log.Info("Moving from " + oldPath + " to " + copyPath);
                 ____saveStore.RenameFile(oldPath, copyPath);
-                files = files.AddItem(Store.currentMPSave + ".mpsave");
-
-                /*if (!____saveStore.FileExists(copyPath) || ____saveStore.GetLastModifiedTime(copyPath) < ____saveStore.GetLastModifiedTime(oldPath))
-                {
-                    ____saveStore.WriteFile(copyPath, ____saveStore.ReadFile(oldPath)!);
-                    
-                }*/
+                files.Add(newName);
+                Store.currentMPSave = "";
             }
         }
 
         Store.mpSaves = files;
         Store.multiSaveCount = files.Count();
         __result = Store.multiSaveCount > 0;
-
-/*        if (__result)
-        {
-            Store.currentMPSave = files.Last();
-            Store.currentMPSave = Store.currentMPSave.Substring(0, Store.currentMPSave.Length - 7);
-        }
-        else
-        {
-            Store.currentMPSave = "";
-        }*/
         return false;
     }
 

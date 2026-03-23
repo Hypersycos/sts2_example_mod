@@ -27,9 +27,8 @@ namespace MoreSaves.MainMenu
     [HarmonyPatch]
     public partial class RunButton : NJoinFriendButton
     {
-        //NContinueRunInfo runinfo;
         ReadSaveResult<SerializableRun>? readResult;
-        string myName;
+        string myName = "";
         bool isSP;
 
         public static RunButton Create(string name, bool isSP)
@@ -61,10 +60,8 @@ namespace MoreSaves.MainMenu
                 }
             }
 
-            myScript.myName = name.Substring(0, name.Length - 7);
+            myScript.myName = name;
             myScript.isSP = isSP;
-            /*            runinfo = new NContinueRunInfo();
-                        AddChild(runinfo);*/
             return myScript;
         }
 
