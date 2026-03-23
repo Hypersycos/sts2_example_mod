@@ -70,7 +70,7 @@ public class SubmenuPatch
 
     [HarmonyPostfix]
     [HarmonyPatch(typeof(NSubmenuStack), nameof(NSubmenuStack.InitializeForMainMenu))]
-    static void ClearSubmenus(NMainMenu mainMenu)
+    public static void ClearSubmenus(NMainMenu mainMenu)
     {
         spContinueScreen = null;
         spAbandonScreen = null;
@@ -177,11 +177,6 @@ public class MultiplayerMenuPatch
     [HarmonyPatch("StartLoad")]
     static bool ModifyContinue(NMultiplayerSubmenu __instance, NSubmenuStack ____stack)
     {
-/*        if (Store.multiSaveCount == 1)
-        {
-            return true;
-        }*/
-
         Store.submenu = __instance;
         ____stack.PushSubmenuType<NewMPContinueScreen>();
         return false;
@@ -191,11 +186,6 @@ public class MultiplayerMenuPatch
     [HarmonyPatch("AbandonRun")]
     static bool ModifyAbandon(NMultiplayerSubmenu __instance, NSubmenuStack ____stack)
     {
-/*        if (Store.multiSaveCount == 1)
-        {
-            return true;
-        }*/
-
         Store.submenu = __instance;
         ____stack.PushSubmenuType<NewMPAbandonScreen>();
         return false;
@@ -212,6 +202,7 @@ public class MenuPatch
     static void GrabMenu(bool openTimeline, ref NMainMenu __result)
     {
         Store.mainMenu = __result;
+        SubmenuPatch.ClearSubmenus(__result);
     }
 
     [HarmonyPostfix]
@@ -235,9 +226,6 @@ public class MenuPatch
     [HarmonyPatch("OnContinueButtonPressed")]
     static bool ModifyContinue(NMainMenu __instance, NMainMenuTextButton ____continueButton, ref NMainMenuTextButton? ____lastHitButton)
     {
-/*        if (Store.saveCount == 1)
-            return true;*/
-
         ____lastHitButton = ____continueButton;
         __instance.SubmenuStack.PushSubmenuType<NewContinueScreen>();
         return false;
@@ -247,9 +235,6 @@ public class MenuPatch
     [HarmonyPatch("OnAbandonRunButtonPressed")]
     static bool ModifyAbandon(NMainMenu __instance, NMainMenuTextButton ____abandonRunButton, ref NMainMenuTextButton? ____lastHitButton)
     {
-/*        if (Store.saveCount == 1)
-            return true;*/
-
         ____lastHitButton = ____abandonRunButton;
         __instance.SubmenuStack.PushSubmenuType<NewAbandonScreen>();
         return false;
@@ -261,10 +246,9 @@ public class ContinueButtonPatch
 {
     [HarmonyPrefix]
     [HarmonyPatch("OnFocus")]
-    static bool AllowContinuePopup()
+    static bool DisableContinuePopup()
     {
         return false;
-        //return Store.saveCount == 1;
     }
 }
 
@@ -310,7 +294,6 @@ public class SaveManagerPatch
     {
         if (____saveStore is CloudSaveStore cloudSaveStore)
         {
-            Log.Info("SyncCloud patch");
             for (int i = 1; i <= 3; i++)
             {
                 string dir = Store.GetSaveDir(i);
@@ -339,7 +322,6 @@ public class SaveManagerPatch
                         if (!filesChecked.Contains(fileName))
                         {
                             filesChecked.Add(fileName);
-                            Log.Info("Checking for stale "+fileName);
                             CleanupStaleCurrentRunSaveForProfile(__instance, i, "MoreSaves\\" + fileName);
                         }
                     }
@@ -395,7 +377,7 @@ public class RunSaveManagerPatch
                 files.Add(file.Substring(0, file.Length - 14));
         }
 
-        if (Store.currentSPSave == "" && ____saveStore.FileExists(oldPath))
+        if (Store.currentSPSave == "" && (____saveStore.FileExists(oldPath) || ____saveStore.FileExists(oldPath+".backup")))
         {
             Store.currentSPSave = "current_run";
             ReadSaveResult<SerializableRun> vanilla = __instance.LoadRunSave();
@@ -410,12 +392,23 @@ public class RunSaveManagerPatch
                 string newName = startTime.ToString("MMM dd HH-mm") + " " + character;
                 string copyPath = Path.Combine(Store.SaveDir, newName + ".spsave");
 
-                Log.Info("Moving from "+oldPath+" to "+copyPath);
-                ____saveStore.RenameFile(oldPath, copyPath);
-                files.Add(newName);
+                Log.Info("Moving from " + oldPath + " to " + copyPath);
 
-                Store.currentSPSave = "";
+                if (____saveStore.FileExists(oldPath))
+                    ____saveStore.RenameFile(oldPath, copyPath);
+
+                if (____saveStore.FileExists(oldPath + ".backup"))
+                {
+                    if (____saveStore is CloudSaveStore cloudStore)
+                        cloudStore.LocalStore.RenameFile(oldPath + ".backup", copyPath + ".backup");
+                    else if (____saveStore is not ICloudSaveStore)
+                        ____saveStore.RenameFile(oldPath + ".backup", copyPath + ".backup");
+                }
+
+                files.Add(newName);
             }
+
+            Store.currentSPSave = "";
         }
 
         Store.spSaves = files;
@@ -445,7 +438,7 @@ public class RunSaveManagerPatch
                 files.Add(file.Substring(0,file.Length-14));
         }
 
-        if (Store.currentMPSave == "" && ____saveStore.FileExists(oldPath))
+        if (Store.currentMPSave == "" && (____saveStore.FileExists(oldPath) || ____saveStore.FileExists(oldPath+".backup")))
         {
             Store.currentMPSave = "current_run_mp";
             ReadSaveResult<SerializableRun> vanilla = __instance.LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform));
@@ -466,10 +459,22 @@ public class RunSaveManagerPatch
                 string copyPath = Path.Combine(Store.SaveDir, newName + ".mpsave");
 
                 Log.Info("Moving from " + oldPath + " to " + copyPath);
-                ____saveStore.RenameFile(oldPath, copyPath);
+
+                if (____saveStore.FileExists(oldPath))
+                    ____saveStore.RenameFile(oldPath, copyPath);
+
+                if (____saveStore.FileExists(oldPath + ".backup"))
+                {
+                    if (____saveStore is CloudSaveStore cloudStore)
+                        cloudStore.LocalStore.RenameFile(oldPath + ".backup", copyPath + ".backup");
+                    else if (____saveStore is not ICloudSaveStore)
+                        ____saveStore.RenameFile(oldPath + ".backup", copyPath + ".backup");
+                }
+
                 files.Add(newName);
-                Store.currentMPSave = "";
             }
+
+            Store.currentMPSave = "";
         }
 
         Store.mpSaves = files;
@@ -494,7 +499,7 @@ public class RunSaveManagerPatch
 
     [HarmonyPrefix]
     [HarmonyPatch(nameof(RunSaveManager.LoadRunSave))]
-    public static bool SkipSPLoadIfBlank(ReadSaveResult<SerializableRun> __result)
+    public static bool SkipSPLoadIfBlank(ref ReadSaveResult<SerializableRun> __result)
     {
         if (Store.currentSPSave == "")
         {
@@ -506,7 +511,7 @@ public class RunSaveManagerPatch
 
     [HarmonyPrefix]
     [HarmonyPatch(nameof(RunSaveManager.LoadMultiplayerRunSave))]
-    public static bool SkipMPLoadIfBlank(ReadSaveResult<SerializableRun> __result)
+    public static bool SkipMPLoadIfBlank(ref ReadSaveResult<SerializableRun> __result)
     {
         if (Store.currentMPSave == "")
         {
