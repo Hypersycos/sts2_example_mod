@@ -5,9 +5,10 @@ using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Saves;
 using MoreSaves.Patches;
+using MegaCrit.Sts2.Core.Logging;
 
 [ModInitializer("Initialize")]
-public class ModEntry
+public class ModEntry : Node
 { 
     public static void Initialize()
     {

@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
@@ -58,6 +59,8 @@ public class Store
         PlatformType platformType = ((SteamInitializer.Initialized && !CommandLineHelper.HasArg("fastmp")) ? PlatformType.Steam : PlatformType.None);
         return SaveManager.Instance.LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(platformType));
     }
+
+    public static MegaCrit.Sts2.Core.Logging.Logger Logger { get; } = new("MoreSaves", MegaCrit.Sts2.Core.Logging.LogType.Generic);
 }
 
 [HarmonyPatch]
@@ -255,6 +258,21 @@ public class ContinueButtonPatch
 [HarmonyPatch(typeof(RunManager))]
 public class RunManagerPatch
 {
+    public static string FilterInvalid(string unfiltered)
+    {
+        return String.Join("", unfiltered.Split('/', '<', '>', ':', '"', '\\', '|', '?', '*'));
+    }
+
+    public static string GetFilteredName(ulong netid, PlatformType platform)
+    {
+        return FilterInvalid(PlatformUtil.GetPlayerName(platform, netid));
+    }
+
+    public static string GetFilteredCharacter(Player player)
+    {
+        return FilterInvalid(player.Character.Title.GetFormattedText());
+    }
+
     [HarmonyPrefix]
     [HarmonyPatch(nameof(RunManager.ToSave))]
     public static void ChangeSaveName(RunManager __instance, long ____startTime)
@@ -265,14 +283,14 @@ public class RunManagerPatch
 
         if (__instance.NetService.Type == NetGameType.Singleplayer)
         {
-            Store.currentSPSave = startTime.ToString("MMM dd HH-mm") + " " + state!.Players[0].Character.Title.GetFormattedText();
+            Store.currentSPSave = startTime.ToString("MMM dd HH-mm") + " " + GetFilteredCharacter(state!.Players[0]);
         }
         else
         {
             Store.currentMPSave = startTime.ToString("MMM dd HH-mm");
             foreach (Player player in state!.Players)
             {
-                Store.currentMPSave += " " + PlatformUtil.GetPlayerName(__instance.NetService.Platform, player.NetId) + " " + player.Character.Title.GetFormattedText();
+                Store.currentMPSave += " " + GetFilteredName(player.NetId, __instance.NetService.Platform) + " " + GetFilteredCharacter(player);
             }
         }
     }
@@ -297,12 +315,17 @@ public class SaveManagerPatch
             for (int i = 1; i <= 3; i++)
             {
                 string dir = Store.GetSaveDir(i);
-                if (____saveStore.DirectoryExists(dir))
+                if (cloudSaveStore.CloudStore.DirectoryExists(dir))
                 {
-                    IEnumerable<string> files = ____saveStore.GetFilesInDirectory(dir);
-                    
+                    IEnumerable<string> files = cloudSaveStore.CloudStore.GetFilesInDirectory(dir);
+                    IEnumerable<string> localFiles = [];
+                    if (cloudSaveStore.LocalStore.DirectoryExists(dir))
+                        localFiles = cloudSaveStore.LocalStore.GetFilesInDirectory(dir);
+
+                    IEnumerable<string> mergedFiles = files.Union(localFiles);
+
                     HashSet<string> filesChecked = new HashSet<string>();
-                    foreach (string file in files)
+                    foreach (string file in mergedFiles)
                     {
                         int lastDot = file.LastIndexOf('.');
                         if (lastDot == -1)
@@ -389,10 +412,10 @@ public class RunSaveManagerPatch
 
                 string character = new LocString("characters", vanilla.SaveData!.Players[0].CharacterId!.Entry + ".title").GetFormattedText();
 
-                string newName = startTime.ToString("MMM dd HH-mm") + " " + character;
+                string newName = startTime.ToString("MMM dd HH-mm") + " " + RunManagerPatch.FilterInvalid(character);
                 string copyPath = Path.Combine(Store.SaveDir, newName + ".spsave");
 
-                Log.Info("Moving from " + oldPath + " to " + copyPath);
+                Store.Logger.Info("Moving from " + oldPath + " to " + copyPath);
 
                 if (____saveStore.FileExists(oldPath))
                     ____saveStore.RenameFile(oldPath, copyPath);
@@ -453,12 +476,12 @@ public class RunSaveManagerPatch
                 foreach (SerializablePlayer player in vanilla.SaveData!.Players)
                 {
                     string character = new LocString("characters", player.CharacterId!.Entry + ".title").GetFormattedText();
-                    newName += " " + PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, player.NetId) + " " + character;
+                    newName += " " + RunManagerPatch.FilterInvalid(PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, player.NetId)) + " " + RunManagerPatch.FilterInvalid(character);
                 }
 
                 string copyPath = Path.Combine(Store.SaveDir, newName + ".mpsave");
 
-                Log.Info("Moving from " + oldPath + " to " + copyPath);
+                Store.Logger.Info("Moving from " + oldPath + " to " + copyPath);
 
                 if (____saveStore.FileExists(oldPath))
                     ____saveStore.RenameFile(oldPath, copyPath);

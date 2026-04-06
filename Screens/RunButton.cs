@@ -101,7 +101,7 @@ namespace MoreSaves.MainMenu
         {
             if (readResult == null || !readResult.Success)
             {
-                Log.Warn("Broken multiplayer run save detected");
+                Store.Logger.Warn("Broken multiplayer run save detected");
                 NErrorPopup modalToCreate = NErrorPopup.Create(new LocString("main_menu_ui", "INVALID_SAVE_POPUP.title"), new LocString("main_menu_ui", "INVALID_SAVE_POPUP.description_run"), new LocString("main_menu_ui", "INVALID_SAVE_POPUP.dismiss"), showReportBugButton: true)!;
                 NModalContainer.Instance!.Add(modalToCreate);
                 NModalContainer.Instance.ShowBackstop();
