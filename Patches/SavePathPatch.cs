@@ -25,6 +25,7 @@ using MegaCrit.Sts2.Core.Saves.Migrations;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MoreSaves.MainMenu;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using static Godot.HttpRequest;
 
@@ -308,11 +309,14 @@ public class RunManagerPatch
         return $"{startDate.ToString("MMM dd HH-mm")} A{ascension} {GetFilteredCharacter(characterTitle)}";
     }
 
-    public static string GetMultiplayerName(long startTime, int ascension, IEnumerable<LocString> characterTitles)
+    public static string GetMultiplayerName(long startTime, int ascension, IEnumerable<KeyValuePair<LocString, ulong>> characterTitles, PlatformType platform)
     {
         DateTime startDate = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
         startDate = startDate.AddSeconds(startTime).ToLocalTime();
-        return $"{startDate.ToString("MMM dd HH-mm")} A{ascension} {String.Join(", ", characterTitles.Select(GetFilteredCharacter))}";
+
+        var getName = (KeyValuePair<LocString, ulong> x) => $"{FilterInvalid(PlatformUtil.GetPlayerName(platform, x.Value))} ({GetFilteredCharacter(x.Key)})";
+
+        return $"{startDate.ToString("MMM dd HH-mm")} A{ascension} {String.Join(", ", characterTitles.Select(getName))}";
     }
 
     [HarmonyPrefix]
@@ -327,7 +331,8 @@ public class RunManagerPatch
         }
         else
         {
-            Store.currentMPSave = GetMultiplayerName(____startTime, state!.AscensionLevel, state.Players.Select((x) => x.Character.Title));
+            
+            Store.currentMPSave = GetMultiplayerName(____startTime, state!.AscensionLevel, state.Players.Select((x) => new KeyValuePair<LocString, ulong>(x.Character.Title, x.NetId)), __instance.NetService.Platform);
         }
     }
 }
@@ -501,9 +506,9 @@ public class RunSaveManagerPatch
 
             if (vanilla.Success)
             {
-                var getTitles = (SerializablePlayer x) => new LocString("characters", x.CharacterId!.Entry + ".title");
+                var getTitles = (SerializablePlayer x) => new KeyValuePair<LocString, ulong>(new LocString("characters", x.CharacterId!.Entry + ".title"), x.NetId);
 
-                string newName = RunManagerPatch.GetMultiplayerName(vanilla.SaveData!.StartTime, vanilla.SaveData.Ascension, vanilla.SaveData!.Players.Select(getTitles));
+                string newName = RunManagerPatch.GetMultiplayerName(vanilla.SaveData!.StartTime, vanilla.SaveData.Ascension, vanilla.SaveData!.Players.Select(getTitles), PlatformUtil.PrimaryPlatform);
 
                 string copyPath = Path.Combine(Store.SaveDir, newName + ".mpsave");
 

@@ -11,8 +11,8 @@
 		<ModName>MoreSaves</ModName>
 		<ModDisplayName>More Saves</ModDisplayName>
 		<ModAuthor>Hypersycos</ModAuthor>
-		<ModVersion>0.2.7</ModVersion>
-		<ModDescription></ModDescription>
+		<ModVersion>0.2.8</ModVersion>
+		<ModDescription>Enables starting new runs without needing to abandon existing saves</ModDescription>
 		<ModDependencies></ModDependencies>
 		<ModAffectsGameplay>false</ModAffectsGameplay>
 
