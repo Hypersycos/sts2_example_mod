@@ -328,11 +328,13 @@ public class RunManagerPatch
         if (__instance.NetService.Type == NetGameType.Singleplayer)
         {
             Store.currentSPSave = GetSingleplayerName(____startTime, state!.AscensionLevel, state.Players[0].Character.Title);
+            Store.Logger.Info($"New SP run started: {Store.currentSPSave}");
         }
         else
         {
             
             Store.currentMPSave = GetMultiplayerName(____startTime, state!.AscensionLevel, state.Players.Select((x) => new KeyValuePair<LocString, ulong>(x.Character.Title, x.NetId)), __instance.NetService.Platform);
+            Store.Logger.Info($"New MP run started: {Store.currentMPSave}");
         }
     }
 }
@@ -474,6 +476,7 @@ public class RunSaveManagerPatch
 
         Store.spSaves = files;
         Store.saveCount = files.Count();
+        Store.Logger.Info($"Has {Store.saveCount} SP saves: {String.Join(", ", files)}");
         __result = Store.saveCount > 0;
         return false;
     }
@@ -533,6 +536,7 @@ public class RunSaveManagerPatch
 
         Store.mpSaves = files;
         Store.multiSaveCount = files.Count();
+        Store.Logger.Info($"Has {Store.multiSaveCount} MP saves: {String.Join(", ", files)}");
         __result = Store.multiSaveCount > 0;
         return false;
     }
@@ -541,6 +545,7 @@ public class RunSaveManagerPatch
     [HarmonyPatch(nameof(RunSaveManager.DeleteCurrentMultiplayerRun))]
     public static void SetNameAfterMPDelete()
     {
+        Store.Logger.Info($"Deleted MP run {Store.currentMPSave}");
         Store.currentMPSave = "";
     }
 
@@ -548,6 +553,7 @@ public class RunSaveManagerPatch
     [HarmonyPatch(nameof(RunSaveManager.DeleteCurrentRun))]
     public static void SetNameAfterSPDelete()
     {
+        Store.Logger.Info($"Deleted SP run {Store.currentSPSave}");
         Store.currentSPSave = "";
     }
 

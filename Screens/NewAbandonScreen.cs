@@ -34,6 +34,7 @@ namespace MoreSaves.MainMenu
         {
             foreach (string file in Store.spSaves)
             {
+                Store.Logger.Info($"Creating SP Abandon button for {file}");
                 RunButton btn = RunButton.Create(file, true);
                 buttonContainer.AddChildSafely(btn);
                 btn.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(btn.AbandonSP));

@@ -62,17 +62,18 @@ namespace MoreSaves.MainMenu
 
             myScript.myName = name;
             myScript.isSP = isSP;
+            if (isSP)
+                myScript.readResult = Store.GetSPRun(name);
+            else
+                myScript.readResult = Store.GetMPRun(name);
+            if (!myScript.readResult.Success)
+                Store.Logger.Warn($"Failed to load {name}, status: {myScript.readResult.ErrorMessage}");
             return myScript;
         }
 
         public override void _Ready()
         {
             //base._Ready();
-            if (isSP)
-                readResult = Store.GetSPRun(myName);
-            else
-                readResult = Store.GetMPRun(myName);
-
             ConnectSignals();
             MegaRichTextLabel node = GetNode<MegaRichTextLabel>("TextHolder/Text");
             NinePatchRect node2 = GetNode<NinePatchRect>("Image");
@@ -86,6 +87,7 @@ namespace MoreSaves.MainMenu
         public void ContinueSP(NButton _)
         {
             Store.currentSPSave = myName;
+            Store.Logger.Info($"Continuing SP save {myName}");
             Store.mainMenu!.RefreshButtons();
             
             ContinueSP(Store.mainMenu, _);
@@ -99,6 +101,7 @@ namespace MoreSaves.MainMenu
 
         public void ContinueMP(NButton _)
         {
+            Store.Logger.Info($"Continuing MP save {myName}");
             if (readResult == null || !readResult.Success)
             {
                 Store.Logger.Warn("Broken multiplayer run save detected");
@@ -120,6 +123,7 @@ namespace MoreSaves.MainMenu
 
         public void AbandonSP(NButton _)
         {
+            Store.Logger.Info($"Abandoning SP save {myName}");
             Store.currentSPSave = myName;
             Store.mainMenu!.RefreshButtons();
             NModalContainer.Instance?.Add(NAbandonRunConfirmPopup.Create(Store.mainMenu)!);
@@ -127,6 +131,7 @@ namespace MoreSaves.MainMenu
 
         public void AbandonMP(NButton _)
         {
+            Store.Logger.Info($"Abandoning MP save {myName}");
             Store.currentMPSave = myName;
 
             AbandonRun(Store.submenu!, _);
